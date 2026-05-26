@@ -71,7 +71,7 @@ function release(type) {
   screen.render();
 
   try {
-    run(`git add package.json src-tauri/tauri.conf.json`);
+    run(`git add .`);
     run(`git commit -m "chore: release v${newVersion}"`);
     run(`git tag v${newVersion}`);
     run(`git push origin HEAD`);
