@@ -4,3 +4,5 @@ src-tauri/gen*
 key
 next-app
 dist
+.tauri
+~

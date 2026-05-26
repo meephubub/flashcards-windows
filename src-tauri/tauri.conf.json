@@ -34,7 +34,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/icon.ico"]
+    "targets": "nsis",
+    "icon": ["icons/icon.ico"],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxMTEwQ0RDQ0IxMEJBQ0MKUldUTXVoREwzQXdSMGRrNnJNRXZxeEQ5RndlSk1NYWU2dXh2blFOeE0zbjFNRG1JV2Mxck50dWEK",
+      "endpoints": [
+        "https://github.com/meephub/flashcards-windows/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

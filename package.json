@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
-    "preview": "tauri preview"
+    "preview": "tauri preview",
+    "release": "git add . && git commit -m \"Release\" && git tag v.$(git rev-list --count HEAD) && git push origin main && git push origin v.$(git rev-list --count HEAD)"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "~2.10.1",
     "@vitejs/plugin-react": "^6.0.2",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.16.0",
