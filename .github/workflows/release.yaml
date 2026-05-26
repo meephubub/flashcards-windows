@@ -26,27 +26,43 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Speeds up Rust compilation significantly on subsequent runs
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Build Vite
-        run: pnpm vite build
-
-      - name: Build Tauri
-        run: pnpm tauri build
-
+      # Using the official Tauri Action handles building AND drafting/creating the GH release assets
+      - name: Build and Publish Tauri App
+        uses: tauri-apps/tauri-action@v0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
