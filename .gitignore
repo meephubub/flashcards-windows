@@ -6,3 +6,4 @@ next-app
 dist
 .tauri
 ~
+.env

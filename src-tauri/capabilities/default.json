@@ -1,3 +1,5 @@
 {
+  "identifier": "main-capability",
+  "windows": ["main"],
   "permissions": ["updater:default", "process:allow-restart"]
 }

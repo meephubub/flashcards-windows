@@ -35,9 +35,8 @@ import {
   useState,
 } from "react";
 
-const SUPABASE_URL = "https://jouowhbhiuuewfwpntex.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdW93aGJoaXV1ZXdmd3BudGV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0Njk3NDA4MiwiZXhwIjoyMDYyNTUwMDgyfQ.Lg4h6dLSex0jtGVOZ3IKGE4yGffGZwDvFI20mFQCDwg";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const VOICEMONKEY_LIGHT_OFF_URL =
   "https://api-v2.voicemonkey.io/trigger?token=814e797e65ae46a6828e1001150bd8ac_0a30f8185cdd6014f8a9b1d0ef1b326a&device=fan-off";
 const VOICEMONKEY_LIGHT_ON_URL =

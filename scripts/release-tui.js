@@ -10,6 +10,14 @@ function writePkg(pkg) {
   fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
 }
 
+function getTauri() {
+  return JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+}
+
+function writeTauri(cfg) {
+  fs.writeFileSync("src-tauri/tauri.conf.json", JSON.stringify(cfg, null, 2));
+}
+
 function bump(version, type) {
   const [a, b, c] = version.split(".").map(Number);
 
@@ -50,14 +58,20 @@ screen.render();
 function release(type) {
   const newVersion = bump(pkg.version, type);
 
+  // update package.json
   pkg.version = newVersion;
   writePkg(pkg);
+
+  // update tauri config
+  const tauri = getTauri();
+  tauri.version = newVersion;
+  writeTauri(tauri);
 
   box.setContent(`Releasing v${newVersion}...\n\nCommitting and tagging...`);
   screen.render();
 
   try {
-    run(`git add package.json`);
+    run(`git add package.json src-tauri/tauri.conf.json`);
     run(`git commit -m "chore: release v${newVersion}"`);
     run(`git tag v${newVersion}`);
     run(`git push origin HEAD`);
