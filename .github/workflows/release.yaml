@@ -53,8 +53,8 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies and prebuild
+        run: pnpm install --frozen-lockfile && pnpm vite build
 
       # Using the official Tauri Action handles building AND drafting/creating the GH release assets
       - name: Build and Publish Tauri App
