@@ -1,13 +1,13 @@
 {
   "name": "flashcards-windows",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
     "preview": "tauri preview",
-    "release": "git add . && git commit -m \"Release\" && git tag v.$(git rev-list --count HEAD) && git push origin main && git push origin v.$(git rev-list --count HEAD)"
+    "release": "node scripts/release-tui.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
@@ -30,6 +30,7 @@
     "@tauri-apps/cli": "^2.0.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "blessed": "^0.1.81",
     "typescript": "^5.2.2"
   }
 }
