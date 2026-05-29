@@ -14,11 +14,15 @@ import {
   LightbulbOff,
   ListTodo,
   LogOut,
+  Pause,
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
+  SkipForward,
   Tag,
+  Timer,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -86,7 +90,15 @@ type Task = {
   reminder_minutes: number | null;
 };
 
-type ViewMode = "palette" | "deck" | "tasks";
+type ViewMode = "palette" | "deck" | "tasks" | "pomodoro";
+
+type PomodoroPhase = "work" | "short-break" | "long-break";
+
+const POMODORO_DURATIONS: Record<PomodoroPhase, number> = {
+  "work": 25 * 60,
+  "short-break": 5 * 60,
+  "long-break": 15 * 60,
+};
 
 type PaletteItem = {
   id: string;
@@ -155,6 +167,15 @@ export function DecksActionSearchBar() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Pomodoro state
+  const [pomodoroPhase, setPomodoroPhase] = useState<PomodoroPhase>("work");
+  const [pomodoroSecondsLeft, setPomodoroSecondsLeft] = useState(
+    POMODORO_DURATIONS["work"],
+  );
+  const [pomodoroRunning, setPomodoroRunning] = useState(false);
+  const [pomodoroSession, setPomodoroSession] = useState(0); // completed work sessions
+  const pomodoroIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const animateWindowSize = useCallback((_width: number, _height: number) => {
     // Window size animation is handled by CSS in web environment
@@ -244,6 +265,82 @@ export function DecksActionSearchBar() {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [mode, showAddTask]);
+
+  // Pomodoro tick
+  useEffect(() => {
+    if (pomodoroRunning) {
+      pomodoroIntervalRef.current = setInterval(() => {
+        setPomodoroSecondsLeft((s) => {
+          if (s <= 1) {
+            // Phase complete — auto-advance
+            setPomodoroRunning(false);
+            setPomodoroPhase((phase) => {
+              if (phase === "work") {
+                let nextPhase: PomodoroPhase = "short-break";
+                setPomodoroSession((n) => {
+                  const next = n + 1;
+                  nextPhase = next % 4 === 0 ? "long-break" : "short-break";
+                  setPomodoroSecondsLeft(POMODORO_DURATIONS[nextPhase]);
+                  return next;
+                });
+                return nextPhase;
+              } else {
+                setPomodoroSecondsLeft(POMODORO_DURATIONS["work"]);
+                return "work";
+              }
+            });
+            // Play a subtle beep via AudioContext
+            try {
+              const ctx = new AudioContext();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.frequency.value = 880;
+              gain.gain.setValueAtTime(0.18, ctx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+              osc.start();
+              osc.stop(ctx.currentTime + 0.7);
+            } catch (_) {/* no audio permission */}
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    } else {
+      if (pomodoroIntervalRef.current)
+        clearInterval(pomodoroIntervalRef.current);
+    }
+    return () => {
+      if (pomodoroIntervalRef.current)
+        clearInterval(pomodoroIntervalRef.current);
+    };
+  }, [pomodoroRunning]);
+
+  const pomodoroReset = useCallback((phase?: PomodoroPhase) => {
+    setPomodoroRunning(false);
+    const p = phase ?? pomodoroPhase;
+    setPomodoroPhase(p);
+    setPomodoroSecondsLeft(POMODORO_DURATIONS[p]);
+  }, [pomodoroPhase]);
+
+  const pomodoroSkip = useCallback(() => {
+    setPomodoroRunning(false);
+    setPomodoroPhase((phase) => {
+      const next: PomodoroPhase =
+        phase === "work"
+          ? (pomodoroSession + 1) % 4 === 0
+            ? "long-break"
+            : "short-break"
+          : "work";
+      setPomodoroSecondsLeft(POMODORO_DURATIONS[next]);
+      return next;
+    });
+  }, [pomodoroSession]);
+
+  const openPomodoro = useCallback(() => {
+    setMode("pomodoro");
+  }, []);
 
   useEffect(() => {
     if (mode === "palette") {
@@ -416,6 +513,13 @@ export function DecksActionSearchBar() {
     setActiveTaskIndex(0);
   }, []);
 
+  const pomodoroMinutes = Math.floor(pomodoroSecondsLeft / 60);
+  const pomodoroSeconds = pomodoroSecondsLeft % 60;
+  const pomodoroTotal = POMODORO_DURATIONS[pomodoroPhase];
+  const pomodoroProgress = 1 - pomodoroSecondsLeft / pomodoroTotal;
+  const RING_R = 54;
+  const RING_CIRC = 2 * Math.PI * RING_R;
+
   const addTask = useCallback(async () => {
     if (!newTaskSubject.trim()) return;
 
@@ -475,6 +579,13 @@ export function DecksActionSearchBar() {
         section: "GO TO",
         icon: <ListTodo size={16} />,
         run: openTasks,
+      },
+      {
+        id: "pomodoro",
+        label: "Pomodoro Timer",
+        section: "GO TO",
+        icon: <Timer size={16} />,
+        run: openPomodoro,
       },
       {
         id: "review-all",
@@ -554,6 +665,7 @@ export function DecksActionSearchBar() {
     syncing,
     triggerVoiceMonkey,
     openTasks,
+    openPomodoro,
   ]);
 
   const groupedPaletteItems = useMemo(
@@ -693,7 +805,144 @@ export function DecksActionSearchBar() {
   return (
     <main className={`app-shell${isAiMode ? " ai-glow" : ""}`}>
       <AnimatePresence mode="wait">
-        {mode === "tasks" ? (
+        {mode === "pomodoro" ? (
+          <motion.section
+            key="pomodoro"
+            className="panel pomodoro-panel"
+            initial={{ opacity: 0, x: 18, scale: 0.98 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -18, scale: 0.98 }}
+            transition={{ duration: 0.16 }}
+          >
+            <header className="search-row">
+              <Timer size={17} />
+              <button className="deck-pill" onClick={() => setMode("palette")}>
+                <span>Pomodoro</span>
+                <X size={12} />
+              </button>
+              <div style={{ flex: 1 }} />
+              <Kbd>esc</Kbd>
+            </header>
+
+            <div className="pomodoro-body">
+              {/* Phase tabs */}
+              <div className="pomodoro-tabs">
+                {(["work", "short-break", "long-break"] as PomodoroPhase[]).map(
+                  (phase) => (
+                    <button
+                      key={phase}
+                      className={`pomodoro-tab${pomodoroPhase === phase ? " active" : ""}`}
+                      onClick={() => pomodoroReset(phase)}
+                    >
+                      {phase === "work"
+                        ? "Focus"
+                        : phase === "short-break"
+                          ? "Short Break"
+                          : "Long Break"}
+                    </button>
+                  ),
+                )}
+              </div>
+
+              {/* Ring timer */}
+              <div className="pomodoro-ring-wrap">
+                <svg
+                  className="pomodoro-ring"
+                  viewBox="0 0 128 128"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  {/* Background track */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r={RING_R}
+                    fill="none"
+                    className="ring-track"
+                    strokeWidth="7"
+                  />
+                  {/* Progress arc */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r={RING_R}
+                    fill="none"
+                    className={`ring-progress ring-progress--${pomodoroPhase}`}
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    strokeDasharray={RING_CIRC}
+                    strokeDashoffset={RING_CIRC * (1 - pomodoroProgress)}
+                    style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
+                  />
+                </svg>
+                <div className="pomodoro-time">
+                  <span className="pomodoro-digits">
+                    {String(pomodoroMinutes).padStart(2, "0")}:{String(pomodoroSeconds).padStart(2, "0")}
+                  </span>
+                  <span className="pomodoro-phase-label">
+                    {pomodoroPhase === "work"
+                      ? "Stay focused"
+                      : pomodoroPhase === "short-break"
+                        ? "Short break"
+                        : "Long break"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="pomodoro-controls">
+                <button
+                  className="pomodoro-ctrl-btn"
+                  onClick={() => pomodoroReset()}
+                  title="Reset"
+                >
+                  <RotateCcw size={18} />
+                </button>
+                <button
+                  className="pomodoro-play-btn"
+                  onClick={() => setPomodoroRunning((r) => !r)}
+                >
+                  {pomodoroRunning ? <Pause size={26} /> : <Play size={26} />}
+                </button>
+                <button
+                  className="pomodoro-ctrl-btn"
+                  onClick={pomodoroSkip}
+                  title="Skip"
+                >
+                  <SkipForward size={18} />
+                </button>
+              </div>
+
+              {/* Session dots */}
+              <div className="pomodoro-sessions">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`session-dot${
+                      i < pomodoroSession % 4 ? " filled" : ""
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="pomodoro-session-count">
+                {pomodoroSession} session{pomodoroSession !== 1 ? "s" : ""} completed
+              </p>
+            </div>
+
+            <footer className="footer-row">
+              <div>
+                <Kbd>esc</Kbd>
+                <span>Back</span>
+              </div>
+              <button
+                className="ghost-button"
+                onClick={() => setMode("palette")}
+              >
+                <ArrowLeft size={14} />
+                Home
+              </button>
+            </footer>
+          </motion.section>
+        ) : mode === "tasks" ? (
           <motion.section
             key="tasks"
             className="panel tasks-panel"
