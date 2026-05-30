@@ -25,6 +25,7 @@ import {
   Timer,
   X,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "framer-motion";
 import { createClient, Session, SupabaseClient } from "@supabase/supabase-js";
 import ReactMarkdown from "react-markdown";
@@ -487,12 +488,23 @@ export function DecksActionSearchBar() {
     setActiveCardIndex(0);
   }, []);
 
-  const closeWindow = useCallback(() => {
-    // In Tauri, this would hide the window to tray
-    // In web, we can reset to home state
+  const closeWindow = useCallback(async () => {
+    try {
+      await invoke("hide_to_tray");
+    } catch (_) { /* non-Tauri environment */ }
     setMode("palette");
     setQuery("");
   }, []);
+
+  // Escape → hide window when in pomodoro mode (palette/deck handled by their key handlers)
+  useEffect(() => {
+    if (mode !== "pomodoro") return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { void closeWindow(); e.preventDefault(); }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [mode, closeWindow]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -515,10 +527,23 @@ export function DecksActionSearchBar() {
 
   const pomodoroMinutes = Math.floor(pomodoroSecondsLeft / 60);
   const pomodoroSeconds = pomodoroSecondsLeft % 60;
-  const pomodoroTotal = POMODORO_DURATIONS[pomodoroPhase];
-  const pomodoroProgress = 1 - pomodoroSecondsLeft / pomodoroTotal;
+
+  // Split-circle ring calculations
   const RING_R = 54;
+  const RING_STROKE = 8;
   const RING_CIRC = 2 * Math.PI * RING_R;
+  const GAP_ARC = (6 / 360) * RING_CIRC; // 6° visual gap between arcs
+  const currentBreakDuration =
+    (pomodoroSession + 1) % 4 === 0
+      ? POMODORO_DURATIONS["long-break"]
+      : POMODORO_DURATIONS["short-break"];
+  const cycleDuration = POMODORO_DURATIONS["work"] + currentBreakDuration;
+  const workArcLen = (POMODORO_DURATIONS["work"] / cycleDuration) * RING_CIRC - GAP_ARC;
+  const breakArcLen = (currentBreakDuration / cycleDuration) * RING_CIRC - GAP_ARC;
+  const progressArcLen =
+    pomodoroPhase === "work"
+      ? (pomodoroSecondsLeft / POMODORO_DURATIONS["work"]) * workArcLen
+      : (pomodoroSecondsLeft / currentBreakDuration) * breakArcLen;
 
   const addTask = useCallback(async () => {
     if (!newTaskSubject.trim()) return;
@@ -809,68 +834,54 @@ export function DecksActionSearchBar() {
           <motion.section
             key="pomodoro"
             className="panel pomodoro-panel"
-            initial={{ opacity: 0, x: 18, scale: 0.98 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -18, scale: 0.98 }}
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.16 }}
           >
-            <header className="search-row">
-              <Timer size={17} />
-              <button className="deck-pill" onClick={() => setMode("palette")}>
-                <span>Pomodoro</span>
-                <X size={12} />
-              </button>
-              <div style={{ flex: 1 }} />
-              <Kbd>esc</Kbd>
-            </header>
-
             <div className="pomodoro-body">
-              {/* Phase tabs */}
-              <div className="pomodoro-tabs">
-                {(["work", "short-break", "long-break"] as PomodoroPhase[]).map(
-                  (phase) => (
-                    <button
-                      key={phase}
-                      className={`pomodoro-tab${pomodoroPhase === phase ? " active" : ""}`}
-                      onClick={() => pomodoroReset(phase)}
-                    >
-                      {phase === "work"
-                        ? "Focus"
-                        : phase === "short-break"
-                          ? "Short Break"
-                          : "Long Break"}
-                    </button>
-                  ),
-                )}
-              </div>
-
-              {/* Ring timer */}
+              {/* Split-circle ring: focus arc + break arc */}
               <div className="pomodoro-ring-wrap">
                 <svg
                   className="pomodoro-ring"
                   viewBox="0 0 128 128"
                   xmlns="http://www.w3.org/2000/svg"
                 >
-                  {/* Background track */}
+                  {/* Focus section background */}
                   <circle
                     cx="64"
                     cy="64"
                     r={RING_R}
                     fill="none"
-                    className="ring-track"
-                    strokeWidth="7"
+                    className="arc-section-work"
+                    strokeWidth={RING_STROKE}
+                    strokeDasharray={`${workArcLen} ${RING_CIRC}`}
+                    strokeDashoffset={0}
+                    style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
                   />
-                  {/* Progress arc */}
+                  {/* Break section background */}
                   <circle
                     cx="64"
                     cy="64"
                     r={RING_R}
                     fill="none"
-                    className={`ring-progress ring-progress--${pomodoroPhase}`}
-                    strokeWidth="7"
+                    className="arc-section-break"
+                    strokeWidth={RING_STROKE}
+                    strokeDasharray={`${breakArcLen} ${RING_CIRC}`}
+                    strokeDashoffset={-(workArcLen + GAP_ARC)}
+                    style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
+                  />
+                  {/* Progress arc — remaining time in current phase */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r={RING_R}
+                    fill="none"
+                    className="arc-progress"
+                    strokeWidth={RING_STROKE}
                     strokeLinecap="round"
-                    strokeDasharray={RING_CIRC}
-                    strokeDashoffset={RING_CIRC * (1 - pomodoroProgress)}
+                    strokeDasharray={`${progressArcLen} ${RING_CIRC}`}
+                    strokeDashoffset={pomodoroPhase === "work" ? 0 : -(workArcLen + GAP_ARC)}
                     style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
                   />
                 </svg>
@@ -880,10 +891,10 @@ export function DecksActionSearchBar() {
                   </span>
                   <span className="pomodoro-phase-label">
                     {pomodoroPhase === "work"
-                      ? "Stay focused"
+                      ? "Focus"
                       : pomodoroPhase === "short-break"
-                        ? "Short break"
-                        : "Long break"}
+                        ? "Break"
+                        : "Long Break"}
                   </span>
                 </div>
               </div>
@@ -895,43 +906,28 @@ export function DecksActionSearchBar() {
                   onClick={() => pomodoroReset()}
                   title="Reset"
                 >
-                  <RotateCcw size={18} />
+                  <RotateCcw size={16} />
                 </button>
                 <button
                   className="pomodoro-play-btn"
                   onClick={() => setPomodoroRunning((r) => !r)}
                 >
-                  {pomodoroRunning ? <Pause size={26} /> : <Play size={26} />}
+                  {pomodoroRunning ? <Pause size={22} /> : <Play size={22} />}
                 </button>
                 <button
                   className="pomodoro-ctrl-btn"
                   onClick={pomodoroSkip}
                   title="Skip"
                 >
-                  <SkipForward size={18} />
+                  <SkipForward size={16} />
                 </button>
               </div>
-
-              {/* Session dots */}
-              <div className="pomodoro-sessions">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={`session-dot${
-                      i < pomodoroSession % 4 ? " filled" : ""
-                    }`}
-                  />
-                ))}
-              </div>
-              <p className="pomodoro-session-count">
-                {pomodoroSession} session{pomodoroSession !== 1 ? "s" : ""} completed
-              </p>
             </div>
 
             <footer className="footer-row">
               <div>
                 <Kbd>esc</Kbd>
-                <span>Back</span>
+                <span>Hide</span>
               </div>
               <button
                 className="ghost-button"
