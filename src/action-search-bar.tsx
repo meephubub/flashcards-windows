@@ -168,6 +168,8 @@ export function DecksActionSearchBar() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
+  const [aiResponse, setAiResponse] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   // Pomodoro state
   const [pomodoroPhase, setPomodoroPhase] = useState<PomodoroPhase>("work");
@@ -263,8 +265,24 @@ export function DecksActionSearchBar() {
       }
     };
 
+    // Ctrl+K to focus search bar
+    const handleCtrlK = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
+        event.preventDefault();
+        if (mode === "palette") {
+          inputRef.current?.focus();
+        } else if (mode === "deck") {
+          cardInputRef.current?.focus();
+        }
+      }
+    };
+
     window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
+    window.addEventListener("keydown", handleCtrlK);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("keydown", handleCtrlK);
+    };
   }, [mode, showAddTask]);
 
   // Pomodoro tick
@@ -575,6 +593,74 @@ export function DecksActionSearchBar() {
     [refreshWorkspace],
   );
 
+  const queryGroq = useCallback(async (prompt: string) => {
+    setAiLoading(true);
+    setAiResponse("");
+
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_GROQ_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-oss-120b",
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Groq API error: ${response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No reader available");
+      }
+
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                fullResponse += content;
+                setAiResponse(fullResponse);
+              }
+            } catch (e) {
+              // Ignore parse errors for incomplete chunks
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Groq API error:", error);
+      setAiResponse("Error: Failed to get response from Groq API. Please check your API key.");
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
+
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = [
       {
@@ -763,6 +849,12 @@ export function DecksActionSearchBar() {
     }
     if (event.key === "ArrowUp") {
       setActiveNoteIndex((index) => Math.max(index - 1, 0));
+    }
+    if (event.key === "Enter" && isAiMode) {
+      const prompt = query.replace(/^ai:\s*/i, "").trim();
+      if (prompt) {
+        void queryGroq(prompt);
+      }
     }
   };
 
@@ -1352,7 +1444,25 @@ export function DecksActionSearchBar() {
             </header>
 
             <section className="result-list">
-              {isDeckSearch ? (
+              {isAiMode ? (
+                <>
+                  {aiLoading && (
+                    <div className="ai-loading">
+                      <RefreshCw size={16} className="spin" />
+                      <span>Thinking...</span>
+                    </div>
+                  )}
+                  {aiResponse && (
+                    <div className="ai-response">
+                      <div className="markdown-body">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {aiResponse}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : isDeckSearch ? (
                 <>
                   <p className="section-title">Decks</p>
                   {filteredDecks.length === 0 ? (
