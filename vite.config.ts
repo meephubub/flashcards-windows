@@ -9,4 +9,12 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: "./index.html",
+        "sticky-note": "./sticky-note.html",
+      },
+    },
+  },
 });

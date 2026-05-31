@@ -15,6 +15,7 @@ import {
   LightbulbOff,
   ListTodo,
   LogOut,
+  Palette,
   Pause,
   Play,
   Plus,
@@ -22,10 +23,12 @@ import {
   RotateCcw,
   Search,
   SkipForward,
+  StickyNote,
   Tag,
   Timer,
   X,
 } from "lucide-react";
+import { ThemeSettings } from "./ThemeSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -94,7 +97,7 @@ type Task = {
   reminder_minutes: number | null;
 };
 
-type ViewMode = "palette" | "deck" | "tasks" | "pomodoro";
+type ViewMode = "palette" | "deck" | "tasks" | "pomodoro" | "theme";
 
 type PomodoroPhase = "work" | "short-break" | "long-break";
 
@@ -365,6 +368,10 @@ export function DecksActionSearchBar() {
     setMode("pomodoro");
   }, []);
 
+  const openTheme = useCallback(() => {
+    setMode("theme");
+  }, []);
+
   useEffect(() => {
     if (mode === "palette") {
       setTimeout(() => inputRef.current?.focus(), 20);
@@ -381,9 +388,12 @@ export function DecksActionSearchBar() {
   const noteSearchMatch = query.match(/^(notes?|note):\s*/i);
   const isNoteSearch = Boolean(noteSearchMatch);
   const isAiMode = /^ai:\s*/i.test(query);
+  const isThemeMode = /^theme:\s*/i.test(query);
 
   useEffect(() => {
-    if (mode !== "palette") return;
+    if (mode === "theme") {
+      animateWindowSize(500, 550);
+    } else if (mode !== "palette") return;
     const contentWidth = isNoteSearch ? 780 : 680;
     const contentHeight = isNoteSearch ? 884 : 600;
     const glowGutter = isAiMode ? 64 : 0;
@@ -480,7 +490,10 @@ export function DecksActionSearchBar() {
   useEffect(() => {
     setActiveIndex(0);
     setActiveNoteIndex(0);
-  }, [query]);
+    if (isThemeMode && mode !== "theme") {
+      setMode("theme");
+    }
+  }, [query, isThemeMode, mode]);
 
   useEffect(() => {
     setActiveCardIndex(0);
@@ -540,6 +553,14 @@ export function DecksActionSearchBar() {
 
   const triggerVoiceMonkey = useCallback(async (url: string) => {
     await fetch(url, { method: "GET" });
+  }, []);
+
+  const openStickyNote = useCallback(async () => {
+    try {
+      await invoke("open_sticky_note");
+    } catch (error) {
+      console.error("Failed to open sticky note:", error);
+    }
   }, []);
 
   const openTasks = useCallback(() => {
@@ -744,6 +765,13 @@ export function DecksActionSearchBar() {
         run: openPomodoro,
       },
       {
+        id: "sticky-note",
+        label: "New Sticky Note",
+        section: "GO TO",
+        icon: <StickyNote size={16} />,
+        run: () => void openStickyNote(),
+      },
+      {
         id: "review-all",
         label: "Review All",
         section: "GO TO",
@@ -813,11 +841,18 @@ export function DecksActionSearchBar() {
         icon: <LogOut size={16} />,
         run: signOut,
       },
+      {
+        id: "theme",
+        label: "Theme Settings",
+        section: "CONTROL",
+        icon: <Palette size={16} />,
+        run: openTheme,
+      },
     ];
 
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return items;
-    if (/^(ai|tag):/i.test(query)) return [];
+    if (/^(ai|tag|theme):/i.test(query)) return [];
     return items.filter((item) =>
       item.label.toLowerCase().includes(normalizedQuery),
     );
@@ -829,6 +864,8 @@ export function DecksActionSearchBar() {
     triggerVoiceMonkey,
     openTasks,
     openPomodoro,
+    openStickyNote,
+    openTheme,
   ]);
 
   const groupedPaletteItems = useMemo(
@@ -1082,6 +1119,17 @@ export function DecksActionSearchBar() {
                 Home
               </button>
             </footer>
+          </motion.section>
+        ) : mode === "theme" ? (
+          <motion.section
+            key="theme"
+            className="panel theme-panel"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.16 }}
+          >
+            <ThemeSettings onClose={() => setMode("palette")} />
           </motion.section>
         ) : mode === "tasks" ? (
           <motion.section

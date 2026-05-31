@@ -25,6 +25,30 @@ fn hide_to_tray(window: Window) {
     let _ = window.hide();
 }
 
+#[tauri::command]
+async fn open_sticky_note(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(_) = app.get_webview_window("sticky-note") {
+        return Err("Sticky note window already open".to_string());
+    }
+
+    let _ = tauri::WebviewWindowBuilder::new(
+        &app,
+        "sticky-note",
+        tauri::WebviewUrl::App("sticky-note.html".into())
+    )
+    .title("Sticky Note")
+    .inner_size(300.0, 400.0)
+    .resizable(true)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -113,7 +137,7 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![set_window_size, hide_to_tray])
+        .invoke_handler(tauri::generate_handler![set_window_size, hide_to_tray, open_sticky_note])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
