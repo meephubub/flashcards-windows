@@ -21,42 +21,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
+      # 1. Install pnpm first so setup-node can detect its lockfile for caching
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Cache pnpm modules
-        uses: actions/cache@v4
+      # 2. Setup Node with built-in pnpm caching
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          node-version: 24
+          cache: "pnpm"
 
+      # 3. Install Rust & configure the faster LLD linker for Windows
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
-      # Speeds up Rust compilation significantly on subsequent runs
+      - name: Configure LLD Linker (Windows)
+        shell: bash
+        run: |
+          mkdir -p .cargo
+          echo -e "[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"link-arg=-fuse-ld=lld\"]" >> .cargo/config.toml
+
+      # 4. Cache Rust dependencies efficiently
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
 
-      - name: Install dependencies and prebuild
-        run: pnpm install --frozen-lockfile && pnpm vite build
+      # 5. Only install dependencies. Let tauri-action handle the frontend build!
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
 
-      # Using the official Tauri Action handles building AND drafting/creating the GH release assets
+      # 6. Build and Publish Tauri App
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
