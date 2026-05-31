@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
+  Download,
   FileText,
   Home,
   Library,
@@ -26,6 +27,8 @@ import {
   X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { AnimatePresence, motion } from "framer-motion";
 import { createClient, Session, SupabaseClient } from "@supabase/supabase-js";
 import ReactMarkdown from "react-markdown";
@@ -170,6 +173,7 @@ export function DecksActionSearchBar() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   // Pomodoro state
   const [pomodoroPhase, setPomodoroPhase] = useState<PomodoroPhase>("work");
@@ -594,15 +598,26 @@ export function DecksActionSearchBar() {
   );
 
   const queryGroq = useCallback(async (prompt: string) => {
+    console.log("AI query triggered with prompt:", prompt);
     setAiLoading(true);
     setAiResponse("");
+
+    const apiKey = import.meta.env.VITE_GROQ_KEY || import.meta.env.GROQ_KEY;
+    console.log("API key available:", !!apiKey);
+
+    if (!apiKey) {
+      console.error("No API key found");
+      setAiResponse("Error: No GROQ_API_KEY found in environment variables.");
+      setAiLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_GROQ_KEY}`,
+          "Authorization": `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model: "openai/gpt-oss-120b",
@@ -616,8 +631,12 @@ export function DecksActionSearchBar() {
         }),
       });
 
+      console.log("Response status:", response.status);
+
       if (!response.ok) {
-        throw new Error(`Groq API error: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error("Groq API error response:", errorText);
+        throw new Error(`Groq API error: ${response.statusText} - ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -655,9 +674,35 @@ export function DecksActionSearchBar() {
       }
     } catch (error) {
       console.error("Groq API error:", error);
-      setAiResponse("Error: Failed to get response from Groq API. Please check your API key.");
+      setAiResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setAiLoading(false);
+    }
+  }, []);
+
+  const checkForUpdates = useCallback(async () => {
+    try {
+      setCheckingUpdate(true);
+      const update = await check();
+
+      if (!update) {
+        alert("You have the latest version (0.5.2).");
+        return;
+      }
+
+      const shouldInstall = confirm(
+        `Update available: ${update.version || "latest"}\n\nRelease notes:\n${update.body || "No release notes available."}\n\nWould you like to install now?`,
+      );
+
+      if (shouldInstall) {
+        await update.downloadAndInstall();
+        await relaunch();
+      }
+    } catch (error) {
+      console.error("Update check failed:", error);
+      alert("You have the latest version (0.5.2).");
+    } finally {
+      setCheckingUpdate(false);
     }
   }, []);
 
@@ -739,6 +784,13 @@ export function DecksActionSearchBar() {
         section: "CONTROL",
         icon: <RefreshCw size={16} className={syncing ? "spin" : ""} />,
         run: refreshWorkspace,
+      },
+      {
+        id: "check-update",
+        label: checkingUpdate ? "Checking..." : "Check for Updates",
+        section: "CONTROL",
+        icon: <Download size={16} className={checkingUpdate ? "spin" : ""} />,
+        run: () => void checkForUpdates(),
       },
       {
         id: "lights-on",
@@ -852,6 +904,7 @@ export function DecksActionSearchBar() {
     }
     if (event.key === "Enter" && isAiMode) {
       const prompt = query.replace(/^ai:\s*/i, "").trim();
+      console.log("Enter pressed in AI mode, prompt:", prompt);
       if (prompt) {
         void queryGroq(prompt);
       }
