@@ -31,3 +31,8 @@ cargo tauri build
 - Press `Escape` to close the window
 - The window automatically focuses the search input on open
 - Window is always on top and frameless for a clean look
+
+### Notes
+- The app uses a custom icon from `icons/icon.ico`
+- The updater endpoint points to GitHub releases
+- The app is configured for NSIS installer targeting Windows

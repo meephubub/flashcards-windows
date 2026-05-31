@@ -72,3 +72,4 @@ jobs:
           releaseBody: "New release"
           releaseDraft: false
           prerelease: false
+          allowUpsertRelease: true
