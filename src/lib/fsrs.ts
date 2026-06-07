@@ -111,14 +111,18 @@ export function isCardDue(
   progress: CardProgressRow | null | undefined,
   now = new Date(),
 ): boolean {
-  if (!progress) return true;
+  // If no progress record exists, card is not yet due (it's new)
+  if (!progress) return false;
+  // Check FSRS-based due date first (primary scheduling system)
   if (progress.fsrs_state?.due) {
     return new Date(progress.fsrs_state.due) <= now;
   }
+  // Fall back to legacy due_date if no FSRS state
   if (progress.due_date) {
     return new Date(progress.due_date) <= now;
   }
-  return true;
+  // If progress exists but neither due system is set, not due
+  return false;
 }
 
 export { Rating, State };
