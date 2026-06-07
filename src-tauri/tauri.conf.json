@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Flashcards",
+  "version": "0.15.0",
+  "identifier": "com.flashcards.app",
+  "build": {
+    "beforeDevCommand": "pnpm run dev:web",
+    "beforeBuildCommand": "pnpm run build:web",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Flashcards",
+        "width": 800,
+        "height": 600,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "center": true,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "hiddenTitle": true,
+        "windowEffects": {
+          "effects": [
+            "acrylic"
+          ],
+          "state": "active"
+        }
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' http://127.0.0.1:8788",
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "externalBin": [
+      "binaries/ai-sidecar"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxMTEwQ0RDQ0IxMEJBQ0MKUldUTXVoREwzQXdSMGRrNnJNRXZxeEQ5RndlSk1NYWU2dXh2blFOeE0zbjFNRG1JV2Mxck50dWEK",
+      "endpoints": [
+        "https://api.github.com/repos/meephub/flashcards-windows/releases/latest"
+      ]
+    }
+  }
+}
