@@ -238,7 +238,6 @@ async function fetchAllRows<T>(query: any): Promise<T[]> {
 export function DecksActionSearchBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const cardInputRef = useRef<HTMLInputElement>(null);
-  const studiedCardIdsRef = useRef<Set<string>>(new Set());
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -406,13 +405,6 @@ export function DecksActionSearchBar() {
       // Filter progress to only include entries for cards that exist
       const validCardIds = new Set(cardRows.map(c => String(c.id)));
       const validProgressRows = progressRows.filter(p => validCardIds.has(String(p.card_id)));
-      console.log("Progress filtering:", { totalProgress: progressRows.length, validProgress: validProgressRows.length, filteredOut: progressRows.length - validProgressRows.length, sampleValidCardIds: Array.from(validCardIds).slice(0, 5), sampleProgressCardIds: progressRows.slice(0, 5).map(p => p.card_id) });
-      // Log progress for all studied cards to see if they were fetched
-      const studiedCardProgresses = Array.from(studiedCardIdsRef.current).map(cardId => ({
-        cardId,
-        progress: validProgressRows.find(p => String(p.card_id) === cardId)
-      }));
-      console.log("Studied card progress after refresh:", studiedCardProgresses);
       setCardProgress(validProgressRows);
       setNotes(noteRows);
       setTasks(taskRows);
@@ -687,13 +679,8 @@ export function DecksActionSearchBar() {
       await expandWindowLikeCalendar();
       setMode("study");
       setQuery("");
-      studiedCardIdsRef.current = new Set(); // Clear studied card IDs when starting new session
-
-      // Debug logging when starting study
-      const deckCards = cardsForDeck(cards, deck.id);
-      console.log("Study started:", { deckName: deck.name, deckCardsCount: deckCards.length, studyQueueCount: studyQueue.length, cardProgressCount: cardProgress.length, sampleCardIds: deckCards.slice(0, 3).map(c => c.id), sampleProgressCardIds: cardProgress.slice(0, 3).map(p => p.card_id) });
     },
-    [buildStudyQueue, expandWindowLikeCalendar, cards, cardProgress],
+    [buildStudyQueue, expandWindowLikeCalendar],
   );
 
   const openStudyDeckPicker = useCallback(async () => {
@@ -705,16 +692,13 @@ export function DecksActionSearchBar() {
     setTimeout(() => inputRef.current?.focus(), 20);
   }, [expandWindowLikeCalendar]);
 
-  const exitStudy = useCallback(async () => {
+  const exitStudy = useCallback(() => {
     setStudyDeck(null);
     setStudyCards([]);
     setMode("palette");
     setQuery("");
     animateWindowSize(680, 600);
-    // Add a small delay to allow database transaction to commit
-    await new Promise(resolve => setTimeout(resolve, 500));
-    await refreshWorkspace();
-  }, [animateWindowSize, refreshWorkspace]);
+  }, [animateWindowSize]);
 
   const saveCardProgress = useCallback(
     async (cardId: string, fsrsState: FsrsStateJson, dueDate: string) => {
@@ -728,25 +712,17 @@ export function DecksActionSearchBar() {
         fsrs_state: fsrsState,
       };
 
-      console.log("saveCardProgress: attempting to save", { cardId, numericCardId, dueDate, fsrsState });
-
       const { error, data } = await supabase.from("card_progress").upsert(row, {
         onConflict: "card_id,user_id",
       }).select();
 
       if (error) {
         clientLogger.error(`Card progress save error: ${error.message}`);
-        console.error("Error saving card progress:", error);
         return;
       }
 
-      console.log("Card progress saved successfully:", { cardId, dueDate, fsrsState, data });
-
       // Use the ID returned from the database upsert
       const dbId = data && data.length > 0 ? data[0].id : 0;
-
-      // Track studied card IDs
-      studiedCardIdsRef.current.add(cardId);
 
       setCardProgress((prev) => {
         const existing = prev.findIndex(
@@ -766,7 +742,6 @@ export function DecksActionSearchBar() {
           updated_at: new Date().toISOString(),
           fsrs_params: existing >= 0 ? prev[existing].fsrs_params : null,
         };
-        console.log("saveCardProgress: updating local state", { cardId, existing, dbId, nextRow });
         if (existing >= 0) {
           const copy = [...prev];
           copy[existing] = nextRow;
@@ -942,11 +917,7 @@ export function DecksActionSearchBar() {
     setCardQuery("");
     setSelectedTag(null);
     setActiveCardIndex(0);
-
-    // Debug logging when deck is selected
-    const deckCards = cardsForDeck(cards, deck.id);
-    console.log("Deck selected:", { deckName: deck.name, deckCardsCount: deckCards.length, cardProgressCount: cardProgress.length, sampleCardIds: deckCards.slice(0, 3).map(c => c.id), sampleProgressCardIds: cardProgress.slice(0, 3).map(p => p.card_id) });
-  }, [cards, cardProgress]);
+  }, []);
 
   const selectDeckFromSearch = useCallback(
     (deck: Deck) => {
