@@ -402,10 +402,7 @@ export function DecksActionSearchBar() {
 
       setDecks(deckRows);
       setCards(cardRows);
-      // Filter progress to only include entries for cards that exist
-      const validCardIds = new Set(cardRows.map(c => String(c.id)));
-      const validProgressRows = progressRows.filter(p => validCardIds.has(String(p.card_id)));
-      setCardProgress(validProgressRows);
+      setCardProgress(progressRows);
       setNotes(noteRows);
       setTasks(taskRows);
       setCalendarEvents(calendarRows);
@@ -699,7 +696,7 @@ export function DecksActionSearchBar() {
     setQuery("");
     animateWindowSize(680, 600);
     // Add a delay to allow database transaction to commit, then refresh progress
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await refreshWorkspace();
   }, [animateWindowSize, refreshWorkspace]);
 
@@ -715,11 +712,19 @@ export function DecksActionSearchBar() {
         fsrs_state: fsrsState,
       };
 
-      console.log("saveCardProgress: attempting to save", { cardId, numericCardId, dueDate, fsrsState });
+      console.log("saveCardProgress: attempting to save", {
+        cardId,
+        numericCardId,
+        dueDate,
+        fsrsState,
+      });
 
-      const { error, data } = await supabase.from("card_progress").upsert(row, {
-        onConflict: "card_id,user_id",
-      }).select();
+      const { error, data } = await supabase
+        .from("card_progress")
+        .upsert(row, {
+          onConflict: "card_id,user_id",
+        })
+        .select();
 
       if (error) {
         clientLogger.error(`Card progress save error: ${error.message}`);
@@ -727,14 +732,20 @@ export function DecksActionSearchBar() {
         return;
       }
 
-      console.log("Card progress saved successfully:", { cardId, dueDate, fsrsState, data });
+      console.log("Card progress saved successfully:", {
+        cardId,
+        dueDate,
+        fsrsState,
+        data,
+      });
 
       // Use the ID returned from the database upsert
       const dbId = data && data.length > 0 ? data[0].id : 0;
 
       setCardProgress((prev) => {
+        // FIX: Use numericCardId instead of string cardId for comparison
         const existing = prev.findIndex(
-          (p) => String(p.card_id) === cardId && p.user_id === session.user.id,
+          (p) => p.card_id === numericCardId && p.user_id === session.user.id,
         );
         const nextRow: CardProgressRow = {
           id: existing >= 0 ? prev[existing].id : dbId,
@@ -746,11 +757,19 @@ export function DecksActionSearchBar() {
           ease_factor: existing >= 0 ? prev[existing].ease_factor : 2.5,
           interval: existing >= 0 ? prev[existing].interval : 0,
           repetitions: existing >= 0 ? prev[existing].repetitions : 0,
-          created_at: existing >= 0 ? prev[existing].created_at : new Date().toISOString(),
+          created_at:
+            existing >= 0
+              ? prev[existing].created_at
+              : new Date().toISOString(),
           updated_at: new Date().toISOString(),
           fsrs_params: existing >= 0 ? prev[existing].fsrs_params : null,
         };
-        console.log("saveCardProgress: updating local state", { cardId, existing, dbId, nextRow });
+        console.log("saveCardProgress: updating local state", {
+          cardId,
+          existing,
+          dbId,
+          nextRow,
+        });
         if (existing >= 0) {
           const copy = [...prev];
           copy[existing] = nextRow;
