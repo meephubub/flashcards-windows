@@ -692,13 +692,16 @@ export function DecksActionSearchBar() {
     setTimeout(() => inputRef.current?.focus(), 20);
   }, [expandWindowLikeCalendar]);
 
-  const exitStudy = useCallback(() => {
+  const exitStudy = useCallback(async () => {
     setStudyDeck(null);
     setStudyCards([]);
     setMode("palette");
     setQuery("");
     animateWindowSize(680, 600);
-  }, [animateWindowSize]);
+    // Add a delay to allow database transaction to commit, then refresh progress
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await refreshWorkspace();
+  }, [animateWindowSize, refreshWorkspace]);
 
   const saveCardProgress = useCallback(
     async (cardId: string, fsrsState: FsrsStateJson, dueDate: string) => {
@@ -712,14 +715,19 @@ export function DecksActionSearchBar() {
         fsrs_state: fsrsState,
       };
 
+      console.log("saveCardProgress: attempting to save", { cardId, numericCardId, dueDate, fsrsState });
+
       const { error, data } = await supabase.from("card_progress").upsert(row, {
         onConflict: "card_id,user_id",
       }).select();
 
       if (error) {
         clientLogger.error(`Card progress save error: ${error.message}`);
+        console.error("Error saving card progress:", error);
         return;
       }
+
+      console.log("Card progress saved successfully:", { cardId, dueDate, fsrsState, data });
 
       // Use the ID returned from the database upsert
       const dbId = data && data.length > 0 ? data[0].id : 0;
@@ -742,6 +750,7 @@ export function DecksActionSearchBar() {
           updated_at: new Date().toISOString(),
           fsrs_params: existing >= 0 ? prev[existing].fsrs_params : null,
         };
+        console.log("saveCardProgress: updating local state", { cardId, existing, dbId, nextRow });
         if (existing >= 0) {
           const copy = [...prev];
           copy[existing] = nextRow;
